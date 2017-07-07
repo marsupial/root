@@ -64,7 +64,7 @@ static DynamicLibrary::HandleSet *IsOpenedHandlesInstance(void *Handle) {
 
 void DynamicLibrary::HandleSet::DLClose(void *Handle) {
   if (HandleSet* HS = IsOpenedHandlesInstance(Handle))
-    HS->Process = nullptr; // Just drop the *Process* handle.
+    HS->Process.Data = &DynamicLibrary::Invalid; // Invalidate the fake handle.
   else
     FreeLibrary((HMODULE)Handle);
 }

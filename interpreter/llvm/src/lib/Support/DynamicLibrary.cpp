@@ -28,16 +28,17 @@ using namespace llvm::sys;
 
 // All methods for HandleSet should be used holding SymbolsMutex.
 class DynamicLibrary::HandleSet {
-  typedef std::vector<void *> HandleList;
+  typedef std::vector<DynamicLibrary> HandleList;
+  typedef std::pair<DynamicLibrary *, bool> ReturnTy;
   HandleList Handles;
-  void *Process;
+  DynamicLibrary Process;
 
 public:
   static void *DLOpen(const char *Filename, std::string *Err, bool Local);
   static void DLClose(void *Handle);
   static void *DLSym(void *Handle, const char *Symbol);
 
-  HandleSet() : Process(nullptr) {}
+  HandleSet() {}
   ~HandleSet();
 
   HandleList::iterator Find(void *Handle) {
@@ -45,44 +46,44 @@ public:
   }
 
   bool Contains(void *Handle) {
-    return Handle == Process || Find(Handle) != Handles.end();
+    return Handle == Process.Data || Find(Handle) != Handles.end();
   }
 
-  bool AddLibrary(void *Handle, bool IsProcess = false, bool CanClose = true) {
+  ReturnTy AddLibrary(void *Handle, bool IsProcess = false, bool CanClose = 1) {
+    assert(Handle != &DynamicLibrary::Invalid);
 #ifdef LLVM_ON_WIN32
     assert((Handle == this ? IsProcess : !IsProcess) && "Bad Handle.");
 #endif
 
     if (LLVM_LIKELY(!IsProcess)) {
-      if (Find(Handle) != Handles.end()) {
+      auto Itr = Find(Handle);
+      if (Itr != Handles.end()) {
         if (CanClose)
           DLClose(Handle);
-        return false;
+        return ReturnTy(&(*Itr), false);
       }
-      Handles.push_back(Handle);
-    } else {
-#ifndef LLVM_ON_WIN32
-      if (Process) {
-        if (CanClose)
-          DLClose(Process);
-        if (Process == Handle)
-          return false;
-      }
-#endif
-      Process = Handle;
+      Handles.emplace_back(Handle);
+      return ReturnTy(&Handles.back(), true);
     }
-    return true;
+
+    bool FirstTime = (Process.Data == &DynamicLibrary::Invalid);
+    if (!FirstTime) {
+      if (CanClose)
+        DLClose(Process.Data);
+    }
+    Process.Data = Handle;
+    return ReturnTy(&Process, FirstTime);
   }
 
   void *LibLookup(const char *Symbol, DynamicLibrary::SearchOrdering Order) {
     if (Order & SO_LoadOrder) {
-      for (void *Handle : Handles) {
-        if (void *Ptr = DLSym(Handle, Symbol))
+      for (DynamicLibrary &DL : Handles) {
+        if (void *Ptr = DLSym(DL.Data, Symbol))
           return Ptr;
       }
     } else {
-      for (void *Handle : llvm::reverse(Handles)) {
-        if (void *Ptr = DLSym(Handle, Symbol))
+      for (DynamicLibrary &DL : llvm::reverse(Handles)) {
+        if (void *Ptr = DLSym(DL.Data, Symbol))
           return Ptr;
       }
     }
@@ -99,7 +100,7 @@ public:
     }
     if (Process) {
       // Use OS facilities to search the current binary and all loaded libs.
-      if (void *Ptr = DLSym(Process, Symbol))
+      if (void *Ptr = DLSym(Process.Data, Symbol))
         return Ptr;
 
       // Search any libs that might have been skipped because of RTLD_LOCAL.

@@ -44,24 +44,43 @@ namespace sys {
     void *Data;
 
   public:
-    explicit DynamicLibrary(void *data = &Invalid) : Data(data) {}
+    explicit DynamicLibrary(void *Handle = &Invalid) : Data(Handle) {}
+
+    /// @brief Load the library from Filename storing errors in ErrMsg.
+    DynamicLibrary(const char *Filename, std::string *ErrMsg = nullptr,
+                   bool RTLocal = false);
+
+    /// @brief Convenience function for using RTLocal without error reporting.
+    DynamicLibrary(const char *Filename, bool RTLocal)
+        : DynamicLibrary(Filename, nullptr, RTLocal) {}
+
+    DynamicLibrary(DynamicLibrary &&Other) : Data(Other.Data) {
+      Other.Data = &Invalid;
+    }
+
+    DynamicLibrary(const DynamicLibrary&) = delete;
+    ~DynamicLibrary();
 
     /// Returns true if the object refers to a valid library.
     bool isValid() const { return Data != &Invalid; }
 
+    /// Comparison operators
+    operator bool () const { return isValid(); }
+    bool operator == (const void *Handle) { return Data == Handle; }
+    bool operator != (const void *Handle) { return Data != Handle; }
+    bool operator < (const void *Handle) { return Data < Handle; }
+
     /// Searches through the library for the symbol \p symbolName. If it is
     /// found, the address of that symbol is returned. If not, NULL is returned.
-    /// Note that NULL will also be returned if the library failed to load.
-    /// Use isValid() to distinguish these cases if it is important.
     /// Note that this will \e not search symbols explicitly registered by
     /// AddSymbol().
-    void *getAddressOfSymbol(const char *symbolName);
+    void *getAddressOfSymbol(const char *SymbolName);
 
     /// This function permanently loads the dynamic library at the given path.
     /// The library will only be unloaded when llvm_shutdown() is called.
-    /// This returns a valid DynamicLibrary instance on success and an invalid
-    /// instance on failure (see isValid()). \p *errMsg will only be modified
-    /// if the library fails to load.
+    /// This returns a pointer to the DynamicLibrary instance on success and an
+    /// nullptr on failure . \p *errMsg will only be modified if the library
+    /// fails to load.
     ///
     /// It is safe to call this function multiple times for the same library.
     /// @brief Open a dynamic library permanently.
@@ -69,13 +88,13 @@ namespace sys {
     /// @param ErrMsg Any error encountered will be stored here.
     /// @param RTLocal Open with RTLD_LOCAL flag on platforms supporting dlopen,
     /// otherwise ignored.
-    static DynamicLibrary getPermanentLibrary(const char *Filename,
-                                              std::string *ErrMsg = nullptr,
-                                              bool RTLocal = false);
+    static DynamicLibrary *getPermanentLibrary(const char *Filename,
+                                               std::string *ErrMsg = nullptr,
+                                               bool RTLocal = false);
 
     /// @brief Convenience function for using RTLocal without error reporting.
-    static DynamicLibrary getPermanentLibrary(const char *Filename,
-                                              bool RTLocal) {
+    static DynamicLibrary *getPermanentLibrary(const char *Filename,
+                                               bool RTLocal) {
       return getPermanentLibrary(Filename, nullptr, RTLocal);
     }
 
@@ -86,17 +105,19 @@ namespace sys {
     /// though ownership is only taken if there was no error.
     ///
     /// \returns An empty \p DynamicLibrary if the library was already loaded.
-    static DynamicLibrary addPermanentLibrary(void *handle,
-                                              std::string *errMsg = nullptr);
+    static DynamicLibrary *addPermanentLibrary(void *Handle,
+                                               std::string *ErrMsg = nullptr);
 
     /// This function permanently loads the dynamic library at the given path.
     /// Use this instead of getPermanentLibrary() when you won't need to get
     /// symbols from the library itself.
     ///
     /// It is safe to call this function multiple times for the same library.
+    ///
+    /// \returns 0 if successful, 1 otherwise.
     static bool LoadLibraryPermanently(const char *Filename,
                                        std::string *ErrMsg = nullptr) {
-      return !getPermanentLibrary(Filename, ErrMsg).isValid();
+      return getPermanentLibrary(Filename, ErrMsg) == nullptr;
     }
 
     enum SearchOrdering {
