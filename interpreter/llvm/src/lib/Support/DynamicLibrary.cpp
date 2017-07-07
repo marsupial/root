@@ -33,7 +33,7 @@ class DynamicLibrary::HandleSet {
   void *Process;
 
 public:
-  static void *DLOpen(const char *Filename, std::string *Err);
+  static void *DLOpen(const char *Filename, std::string *Err, bool Local);
   static void DLClose(void *Handle);
   static void *DLSym(void *Handle, const char *Symbol);
 
