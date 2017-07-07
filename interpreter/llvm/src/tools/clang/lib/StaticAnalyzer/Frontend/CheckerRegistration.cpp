@@ -53,15 +53,15 @@ ClangCheckerRegistry::ClangCheckerRegistry(ArrayRef<std::string> plugins,
        i != e; ++i) {
     // Get access to the plugin.
     std::string err;
-    DynamicLibrary lib = DynamicLibrary::getPermanentLibrary(i->c_str(), &err);
-    if (!lib.isValid()) {
+    DynamicLibrary *lib = DynamicLibrary::getPermanentLibrary(i->c_str(), &err);
+    if (!lib) {
       diags->Report(diag::err_fe_unable_to_load_plugin) << *i << err;
       continue;
     }
 
     // See if it's compatible with this build of clang.
     const char *pluginAPIVersion =
-      (const char *) lib.getAddressOfSymbol("clang_analyzerAPIVersionString");
+      (const char *) lib->getAddressOfSymbol("clang_analyzerAPIVersionString");
     if (!isCompatibleAPIVersion(pluginAPIVersion)) {
       warnIncompatible(diags, *i, pluginAPIVersion);
       continue;
@@ -69,7 +69,7 @@ ClangCheckerRegistry::ClangCheckerRegistry(ArrayRef<std::string> plugins,
 
     // Register its checkers.
     RegisterCheckersFn registerPluginCheckers =
-      (RegisterCheckersFn) (intptr_t) lib.getAddressOfSymbol(
+      (RegisterCheckersFn) (intptr_t) lib->getAddressOfSymbol(
                                                       "clang_registerCheckers");
     if (registerPluginCheckers)
       registerPluginCheckers(*this);
